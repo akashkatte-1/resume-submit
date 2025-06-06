@@ -100,6 +100,9 @@ auth: {
   user: 'akashkatte316@gmail.com',
   pass: 'gsqcehbvsbcxpqzb'
 }
+admin:{
+user:'akashkatte.sknscoe.entc@gmail.com'
+}
 ```
 
 📚 [How to create an App Password](https://support.google.com/accounts/answer/185833)
