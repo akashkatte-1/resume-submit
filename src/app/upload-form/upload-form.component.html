@@ -1,0 +1,20 @@
+<div class="card p-3 mb-4">
+    <h3>Upload Resume</h3>
+    <div *ngIf="message" class="alert alert-info">{{ message }}</div>
+    <form (ngSubmit)="submitForm()">
+      <div class="mb-2">
+        <input type="text" class="form-control" placeholder="Name" [(ngModel)]="name" name="name" required />
+      </div>
+      <div class="mb-2">
+        <input type="email" class="form-control" placeholder="Email" [(ngModel)]="email" name="email" required />
+      </div>
+      <div class="mb-2">
+        <input type="text" class="form-control" placeholder="Position Applied" [(ngModel)]="positionApplied" name="positionApplied" required />
+      </div>
+      <div class="mb-2">
+        <input type="file" class="form-control" (change)="onFileChange($event)" accept="application/pdf" required />
+      </div>
+      <button class="btn btn-primary" type="submit">Submit</button>
+    </form>
+  </div>
+  

@@ -1,0 +1,26 @@
+<div class="card p-3">
+    <h3>All Submissions</h3>
+    <table class="table table-bordered mt-2">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Position</th>
+          <th>Resume</th>
+          <th>Submitted At</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let submission of submissions">
+          <td>{{ submission.name }}</td>
+          <td>{{ submission.email }}</td>
+          <td>{{ submission.positionApplied }}</td>
+          <td>
+            <a href="http://localhost:5000/{{ submission.resumePath }}" target="_blank">View</a>
+          </td>
+          <td>{{ submission.created_at  }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  
