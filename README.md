@@ -97,8 +97,8 @@ If you use Gmail:
 
 ```js
 auth: {
-  user: 'your-email@gmail.com',
-  pass: 'your-app-password'
+  user: 'akashkatte316@gmail.com',
+  pass: 'gsqcehbvsbcxpqzb'
 }
 ```
 
