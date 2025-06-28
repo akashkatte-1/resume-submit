@@ -8,93 +8,117 @@ const mysql = require('mysql2');
 const path = require('path');
 const fs = require('fs');
 
-const app = express();
+// Constants
 const PORT = 5000;
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const MAX_FILE_SIZE_MB = 5;
+const ALLOWED_FILE_TYPE = 'application/pdf';
+
+// Initialize app
+const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(UPLOAD_DIR));
 
-// Create uploads folder if not exist
-if (!fs.existsSync('./uploads')) {
-  fs.mkdirSync('./uploads');
+// Ensure upload directory exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR);
 }
 
-// MySQL setup
+// MySQL connection
 const db = mysql.createConnection({
   host: 'localhost',
-  user: 'root',        // replace with your MySQL user
-  password: 'Ak@#12345',        // replace with your MySQL password
+  user: 'root',
+  password: 'Ak@#12345', // 🔒 Replace with env vars in production
   database: 'resume_portol',
 });
 
 db.connect((err) => {
-  if (err) throw err;
+  if (err) {
+    console.error('MySQL Connection Error:', err);
+    return;
+  }
   console.log('MySQL connected');
 });
 
-// Create submissions table if not exists
-const tableQuery = `
-CREATE TABLE IF NOT EXISTS submissions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100),
-  email VARCHAR(100),
-  positionApplied VARCHAR(100),
-  resumePath VARCHAR(255),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)`;
-db.query(tableQuery);
+// Create submissions table if it doesn't exist
+const createTableQuery = `
+  CREATE TABLE IF NOT EXISTS submissions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100),
+    email VARCHAR(100),
+    positionApplied VARCHAR(100),
+    resumePath VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`;
 
-// Multer setup
+db.query(createTableQuery);
+
+// Multer configuration
 const storage = multer.diskStorage({
-  destination: './uploads/',
+  destination: UPLOAD_DIR,
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname);
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${uniqueSuffix}-${file.originalname}`);
   },
 });
 
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype !== 'application/pdf') {
-      return cb(new Error('Only PDF files are allowed'));
+    const isValidFileType = file.mimetype === ALLOWED_FILE_TYPE;
+    if (!isValidFileType) {
+      return cb(new Error('Only PDF files are allowed.'));
     }
     cb(null, true);
   },
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: {
+    fileSize: MAX_FILE_SIZE_MB * 1024 * 1024,
+  },
 });
 
-// Nodemailer setup
+// Nodemailer configuration
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: 'akashkatte316@gmail.com',
-    pass: 'gsqcehbvsbcxpqzb',
+    pass: 'gsqcehbvsbcxpqzb', // 🔒 Use environment variables in production
   },
 });
 
-// Upload Resume
+// Upload resume endpoint
 app.post('/api/upload-resume', upload.single('resume'), (req, res) => {
   const { name, email, positionApplied } = req.body;
-  const resumePath = req.file.path;
+  const resumePath = req.file?.path;
 
-  const sql = 'INSERT INTO submissions (name, email, positionApplied, resumePath) VALUES (?, ?, ?, ?)';
-  db.query(sql, [name, email, positionApplied, resumePath], (err, result) => {
+  if (!name || !email || !positionApplied || !resumePath) {
+    return res.status(400).json({ error: 'Missing required fields or resume file' });
+  }
+
+  const insertQuery = `
+    INSERT INTO submissions (name, email, positionApplied, resumePath)
+    VALUES (?, ?, ?, ?)
+  `;
+
+  db.query(insertQuery, [name, email, positionApplied, resumePath], (err) => {
     if (err) {
-      console.error('DB Insert Error:', err);
-      return res.status(500).json({ error: 'Database Error' });
+      console.error('Database Insert Error:', err);
+      return res.status(500).json({ error: 'Database insertion failed' });
     }
 
-    // Send email to admin
+    // Admin email setup
     const mailOptionsAdmin = {
       from: 'akashkatte316@gmail.com',
       to: 'akashkatte.sknscoe.entc@gmail.com',
       subject: `New Resume Submitted by ${name}`,
-      html: `<p><strong>Name:</strong> ${name}</p>
-             <p><strong>Email:</strong> ${email}</p>
-             <p><strong>Position:</strong> ${positionApplied}</p>`,
+      html: `
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Position:</strong> ${positionApplied}</p>
+      `,
       attachments: [
         {
           filename: req.file.originalname,
@@ -103,38 +127,54 @@ app.post('/api/upload-resume', upload.single('resume'), (req, res) => {
       ],
     };
 
-    // Confirmation email to user
+    // Confirmation email setup
     const mailOptionsUser = {
       from: 'akashkatte316@gmail.com',
       to: email,
       subject: 'Resume Received - Thank you!',
-      html: `<p>Dear ${name},</p><p>Thank you for applying for the position of <strong>${positionApplied}</strong>.</p><p>We have received your resume and will be in touch if there’s a match.</p>`
+      html: `
+        <p>Dear ${name},</p>
+        <p>Thank you for applying for the position of <strong>${positionApplied}</strong>.</p>
+        <p>We have received your resume and will be in touch if there’s a match.</p>
+      `,
     };
 
-    transporter.sendMail(mailOptionsAdmin, (err, info) => {
-      if (err) console.error('Email to Admin Error:', err);
-      else console.log('Email to Admin sent:', info.response);
+    // Send emails
+    transporter.sendMail(mailOptionsAdmin, (adminErr, adminInfo) => {
+      if (adminErr) {
+        console.error('Email to Admin Error:', adminErr);
+      } else {
+        console.log('Email to Admin sent:', adminInfo.response);
+      }
     });
 
-    transporter.sendMail(mailOptionsUser, (err, info) => {
-      if (err) console.error('Email to User Error:', err);
-      else console.log('Email to User sent:', info.response);
+    transporter.sendMail(mailOptionsUser, (userErr, userInfo) => {
+      if (userErr) {
+        console.error('Email to User Error:', userErr);
+      } else {
+        console.log('Email to User sent:', userInfo.response);
+      }
     });
 
-    res.status(200).json({ message: 'Resume uploaded and email sent' });
+    return res.status(200).json({ message: 'Resume uploaded and emails sent successfully' });
   });
 });
 
-// Get all submissions
+// Get all submissions endpoint
 app.get('/api/submissions', (req, res) => {
-  const sql = 'SELECT * FROM submissions ORDER BY created_at DESC';
-  db.query(sql, (err, results) => {
+  const selectQuery = 'SELECT * FROM submissions ORDER BY created_at DESC';
+
+  db.query(selectQuery, (err, results) => {
     if (err) {
-      console.error('Fetch Error:', err);
-      return res.status(500).json({ error: 'Database Error' });
+      console.error('Database Fetch Error:', err);
+      return res.status(500).json({ error: 'Failed to fetch submissions' });
     }
-    res.json(results);
+
+    return res.json(results);
   });
 });
 
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+// Start server
+app.listen(PORT, () => {
+  console.log(`✅ Server running at: http://localhost:${PORT}`);
+});
